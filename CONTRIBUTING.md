@@ -2,6 +2,7 @@
 
 首先，感谢您花时间为快游大师贡献代码或技能库！快游大师是一个致力于普及端侧 AI 自动化编程生态的开源项目。无论您是修复 Bug、改进 MCP Server，还是用大模型捏出了一个好用的神仙脚本（ReactiveSkill），我们都热烈欢迎！
 
+在参与社区贡献前，请确保您已阅读并同意我们的 [社区行为准则 (Code of Conduct)](./CODE_OF_CONDUCT.md)。我们致力于为所有人提供一个友好、包容的技术社区。
 ## 1. 我们需要什么贡献？
 
 我们特别鼓励以下两种形式的贡献：
@@ -29,34 +30,49 @@
 > 提案需包含：1. 技能名称与简介；2. 该技能解决了什么痛点；3. JSON 核心逻辑代码块；4. 提醒用户该技能适用的 App 版本。
 > 请按照 GitHub PR Template 的风格输出。"
 
-将 AI 生成的文本粘贴到您的 Pull Request 描述中即可！
+将 AI 生成的文本粘贴到您的 Pull Request 描述中即可！我们已经在 GitHub 中配置了专属的 **Skill Submission** Issue 模板和 Pull Request 模板，直接填写即可。
 
 ---
 
 ## 3. 开发环境与提交流程 (Development Workflow)
 
-如果您想修改项目本身的代码（Android 或 Node.js Server），请遵循标准的 GitHub Fork 工作流：
+本项目严格遵循 **[Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)** 分支管理规范：
+- `main`：生产环境主分支，随时可发布。
+- `develop`：主开发分支，包含下一次发布的所有最新开发代码。
+- `feature/*`：新功能分支（从 `develop` 检出，合并回 `develop`）。
+- `hotfix/*`：紧急修复分支（从 `main` 检出，合并回 `main` 和 `develop`）。
+
+如果您想修改项目本身的代码（Android 或 Node.js Server），请遵循以下步骤：
 
 1. **Fork 本仓库** 到您的个人账号下。
 2. **Clone 到本地**：
    ```bash
    git clone https://github.com/YOUR-USERNAME/kuaiyou-app.git
+   cd kuaiyou-app
+   git checkout develop
    ```
 3. **创建特性分支**：
    ```bash
-   git checkout -b feature/your-amazing-feature
+   git checkout -b feature/your-amazing-feature develop
    ```
-4. **提交代码 (Commit)**：
+4. **本地运行与测试**：
+   如果您修改了 `kuaiyou-mcp-server`，请确保在本地测试通过：
+   ```bash
+   cd kuaiyou-mcp-server
+   npm install
+   npm run build
+   ```
+5. **提交代码 (Commit)**：
    我们遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范。请使用规范的提交信息格式（例如 `feat: add new target selector` 或 `fix: mcp server adb fallback`）。
-5. **推送到远程并提交 PR**：
+6. **推送到远程并提交 PR**：
    ```bash
    git push origin feature/your-amazing-feature
    ```
    然后在 GitHub 页面点击 "Compare & pull request"。
+   > **⚠️ 注意**：提交 Pull Request 时，请务必将目标分支 (base branch) 设置为 `develop` 而不是 `main`。请务必仔细填写弹出的 **Pull Request 模板** 中的 CheckList。
 
 ### 代码风格规范
-- **Node.js (MCP Server)**：基于 TypeScript，请在提交前运行 `npm run lint` 和 `npm run build` 确保没有 TS 编译错误。
-
+- **Node.js (MCP Server)**：基于 TypeScript，请在提交 PR 之前运行 `npm run build` 确保没有 TS 编译错误。为了保证代码质量，我们的 GitHub Actions 会对提交的 PR 进行自动构建测试。
 ## 4. 取得联系与反馈
 
 如果您在贡献过程中遇到任何问题，欢迎在 GitHub 的 Issues 中发起提问。维护者通常会在 24 小时内回复您。
