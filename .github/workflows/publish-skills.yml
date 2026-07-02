@@ -1,0 +1,61 @@
+name: Publish Skills to GitHub Pages
+
+on:
+  push:
+    branches: ["main"]
+    paths:
+      - 'skills/**'
+      - 'agent-skills/**'
+      - 'scripts/build-skill-index.js'
+  workflow_dispatch:
+
+# Sets permissions of the GITHUB_TOKEN to allow deployment to GitHub Pages
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow only one concurrent deployment
+concurrency:
+  group: "pages"
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Build Skills Index
+        run: node scripts/build-skill-index.js
+
+      - name: Prepare Pages Artifact
+        run: |
+          mkdir public
+          # Copy skills folder (now containing index.json)
+          cp -r skills public/
+          # Copy agent-skills folder
+          cp -r agent-skills public/
+          # Copy a basic index.html for redirect or intro if needed
+          echo "<!DOCTYPE html><html><body><h1>Kuaiyou Master Skills API</h1><p>Access <a href='./skills/index.json'>/skills/index.json</a></p></body></html>" > public/index.html
+
+      - name: Setup Pages
+        uses: actions/configure-pages@v5
+
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v3
+        with:
+          path: './public'
+
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v4
