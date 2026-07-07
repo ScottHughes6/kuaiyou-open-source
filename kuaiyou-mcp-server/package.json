@@ -1,7 +1,7 @@
 {
   "name": "kuaiyou-mcp-server",
   "version": "1.0.0",
-  "description": "",
+  "description": "A Model Context Protocol (MCP) server for Android reactive automation, enabling AI agents like Cursor and Claude to directly control Kuaiyou Master App.",
   "main": "index.js",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1",
@@ -15,7 +15,9 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
-    "fast-xml-parser": "^5.9.3"
+    "fast-xml-parser": "^5.9.3",
+    "zod": "^4.4.3",
+    "zod-to-json-schema": "^3.25.2"
   },
   "devDependencies": {
     "@types/node": "^26.1.0",
