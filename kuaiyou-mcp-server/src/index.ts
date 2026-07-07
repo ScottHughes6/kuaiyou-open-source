@@ -13,6 +13,8 @@ import * as path from "path";
 import { exec } from "child_process";
 import { promisify } from "util";
 import * as dotenv from "dotenv";
+import crypto from "crypto";
+import { z } from "zod";
 
 dotenv.config();
 
@@ -32,6 +34,21 @@ const server = new Server(
 
 // Helper for IP
 const getDeviceIp = () => process.env.KUAIYOU_DEVICE_IP;
+const getPackageName = () => process.env.KUAIYOU_PACKAGE_NAME || "com.kuaiyou.automator.clicker";
+
+const ReactiveSkillSchema = z.object({
+  id: z.string().min(1, "Missing required field: id"),
+  name: z.string().min(1, "Missing required field: name"),
+  description: z.string().min(1, "Missing required field: description"),
+  executionMode: z.literal("REACTIVE").optional(),
+  agentId: z.literal("").optional(),
+  termination: z.object({
+    type: z.string()
+  }).passthrough(),
+  goals: z.array(z.any()),
+  pacingPreset: z.string().optional(),
+  scanConfig: z.object({}).passthrough().optional()
+}).passthrough();
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -102,6 +119,44 @@ async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout 
   }
 }
 
+function parseBoundsStr(boundsStr: string) {
+  const match = boundsStr.match(/\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/);
+  if (match) {
+    const left = parseInt(match[1], 10);
+    const top = parseInt(match[2], 10);
+    const right = parseInt(match[3], 10);
+    const bottom = parseInt(match[4], 10);
+    return {
+      left,
+      top,
+      right,
+      bottom,
+      width: right - left,
+      height: bottom - top,
+      centerX: Math.floor((left + right) / 2),
+      centerY: Math.floor((top + bottom) / 2)
+    };
+  }
+  return boundsStr;
+}
+
+function enhanceUiNodes(data: any): any {
+  if (Array.isArray(data)) {
+    return data.map(enhanceUiNodes);
+  } else if (data !== null && typeof data === 'object') {
+    const newData: any = {};
+    for (const key in data) {
+      if (key === 'bounds' && typeof data[key] === 'string') {
+        newData[key] = parseBoundsStr(data[key]);
+      } else {
+        newData[key] = enhanceUiNodes(data[key]);
+      }
+    }
+    return newData;
+  }
+  return data;
+}
+
 server.setRequestHandler(CallToolRequestSchema, async (request) => {
   switch (request.params.name) {
     case "validate_kuaiyou_skill": {
@@ -122,17 +177,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       try {
         const parsed = JSON.parse(content);
-        const errors: string[] = [];
-
-        if (!parsed.id) errors.push("Missing required field: id");
-        if (!parsed.name) errors.push("Missing required field: name");
-        if (!parsed.description) errors.push("Missing required field: description");
-        if (parsed.executionMode !== "REACTIVE") errors.push("executionMode must be 'REACTIVE'");
-        if (!parsed.termination || typeof parsed.termination !== "object") errors.push("Missing or invalid 'termination' object");
-        if (!Array.isArray(parsed.goals)) errors.push("Missing or invalid 'goals' array");
-        if (parsed.agentId !== "") errors.push("agentId must be an empty string '\"\"' for custom skills");
-
-        if (errors.length > 0) {
+        const result = ReactiveSkillSchema.safeParse(parsed);
+        
+        if (!result.success) {
+          const errors = result.error.errors.map(err => `${err.path.join('.')}: ${err.message}`);
           return {
             content: [{ type: "text", text: "Validation failed with errors:\n" + errors.join("\n") }],
             isError: true,
@@ -192,7 +240,8 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const tempPath = path.join(os.tmpdir(), `${skillId}.json`);
         await fs.writeFile(tempPath, skillJson, "utf8");
 
-        const targetPath = `/sdcard/Android/data/com.kuaiyou.automator.clicker.test/files/${skillId}.json`;
+        const packageName = getPackageName();
+        const targetPath = `/sdcard/Android/data/${packageName}/files/${skillId}.json`;
         
         const { stdout: pushOut, stderr: pushErr } = await execAsync(`adb push ${tempPath} ${targetPath}`);
         logs += `[ADB PUSH]\n${pushOut}\n${pushErr}\n`;
@@ -226,9 +275,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const response = await fetchWithTimeout(`http://${ip}:8080/api/mcp/ui_tree`);
           if (response.ok) {
             const jsonText = await response.text();
-            return {
-              content: [{ type: "text", text: jsonText }],
-            };
+            try {
+              const parsedJson = JSON.parse(jsonText);
+              const enhancedJson = enhanceUiNodes(parsedJson);
+              return {
+                content: [{ type: "text", text: JSON.stringify(enhancedJson, null, 2) }],
+              };
+            } catch (e) {
+              return {
+                content: [{ type: "text", text: jsonText }],
+              };
+            }
           } else {
             logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
           }
@@ -239,15 +296,21 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Fallback to ADB
       logs += `\nFalling back to ADB uiautomator dump...\n`;
+      const dumpFilename = `window_dump_${crypto.randomUUID()}.xml`;
+      const tempPath = path.join(os.tmpdir(), dumpFilename);
+      
       try {
         // Run dump
-        await execAsync(`adb shell uiautomator dump /sdcard/window_dump.xml`);
+        await execAsync(`adb shell uiautomator dump /sdcard/${dumpFilename}`);
         
         // Pull dump
-        const tempPath = path.join(os.tmpdir(), "window_dump.xml");
-        await execAsync(`adb pull /sdcard/window_dump.xml ${tempPath}`);
+        await execAsync(`adb pull /sdcard/${dumpFilename} ${tempPath}`);
         
         const xmlData = await fs.readFile(tempPath, "utf8");
+        
+        // Clean up immediately
+        await execAsync(`adb shell rm /sdcard/${dumpFilename}`).catch(() => {});
+        await fs.unlink(tempPath).catch(() => {});
         
         const parser = new XMLParser({
           ignoreAttributes: false,
@@ -275,6 +338,9 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
             
             // Only add nodes that have actual geometry or text
             if (Object.keys(nodeInfo).length > 0 && nodeInfo.bounds) {
+              if (typeof nodeInfo.bounds === 'string') {
+                nodeInfo.bounds = parseBoundsStr(nodeInfo.bounds);
+              }
               nodes.push(nodeInfo);
             }
           }
