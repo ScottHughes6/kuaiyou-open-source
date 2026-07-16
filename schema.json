@@ -15,12 +15,10 @@
       "minLength": 1
     },
     "executionMode": {
-      "type": "string",
-      "const": "REACTIVE"
+      "type": "string"
     },
     "agentId": {
-      "type": "string",
-      "const": ""
+      "type": "string"
     },
     "termination": {
       "type": "object",

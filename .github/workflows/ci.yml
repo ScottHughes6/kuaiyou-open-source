@@ -1,4 +1,4 @@
-name: Node.js CI
+name: CI
 
 on:
   push:
@@ -7,30 +7,104 @@ on:
     branches: [ "main", "develop" ]
 
 jobs:
-  build:
-
+  mcp:
+    name: MCP Server
     runs-on: ubuntu-latest
-
     defaults:
       run:
         working-directory: ./kuaiyou-mcp-server
-
     strategy:
       matrix:
         node-version: [18.x, 20.x]
-
     steps:
-    - uses: actions/checkout@v4
-    
-    - name: Use Node.js ${{ matrix.node-version }}
-      uses: actions/setup-node@v4
-      with:
-        node-version: ${{ matrix.node-version }}
-        cache: 'npm'
-        cache-dependency-path: './kuaiyou-mcp-server/package-lock.json'
-        
-    - name: Install dependencies
-      run: npm ci
-      
-    - name: Build the project
-      run: npm run build --if-present
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js ${{ matrix.node-version }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node-version }}
+          cache: 'npm'
+          cache-dependency-path: './kuaiyou-mcp-server/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Verify schema.json is up to date
+        run: |
+          npm run build:schema
+          git diff --exit-code ../schema.json
+
+      - name: Pack and smoke-test the published tarball
+        run: |
+          npm pack
+          tarball="$(ls kuaiyou-mcp-server-*.tgz)"
+          workdir="$(mktemp -d)"
+          npm init -y --prefix "$workdir" >/dev/null 2>&1
+          npm install --prefix "$workdir" "$PWD/$tarball" >/dev/null 2>&1
+          # Drive an MCP initialize + tools/list handshake against the installed CLI.
+          node --input-type=module -e '
+            import { Client } from "@modelcontextprotocol/sdk/client/index.js";
+            import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
+            const bin = process.argv[1];
+            const transport = new StdioClientTransport({ command: "node", args: [bin], env: { ...process.env, KUAIYOU_DEVICE_IP: "" } });
+            const client = new Client({ name: "ci-smoke", version: "1.0.0" }, { capabilities: {} });
+            await client.connect(transport);
+            const { tools } = await client.listTools();
+            if (tools.length < 4) { throw new Error("expected >= 4 tools, got " + tools.length); }
+            await client.close();
+            console.log("smoke test ok: " + tools.length + " tools");
+          ' "$workdir/node_modules/kuaiyou-mcp-server/build/index.js"
+
+  website:
+    name: Website
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ./website
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: 'npm'
+          cache-dependency-path: './website/package-lock.json'
+
+      - name: Install dependencies
+        run: npm ci
+
+      # NOTE: `npm run lint` is intentionally omitted until the eslint toolchain
+      # is fixed. eslint is pinned to 8.0.0, which crashes loading the
+      # @typescript-eslint rules pulled in by `next/typescript`
+      # ("Error while loading rule '@typescript-eslint/no-unnecessary-type-constraint'").
+      # Tracked as a follow-up; re-add once eslint is bumped to a working 8.x/9.x.
+
+      - name: Typecheck
+        run: npx tsc --noEmit
+
+      - name: Build
+        run: npm run build
+
+  skills:
+    name: Skills
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Use Node.js 20
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+
+      - name: Validate skills against schema and verify index contract
+        run: node scripts/validate-skills.mjs
