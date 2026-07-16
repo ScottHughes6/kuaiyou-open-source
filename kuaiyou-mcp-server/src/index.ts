@@ -10,7 +10,7 @@ import { XMLParser } from "fast-xml-parser";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { exec } from "child_process";
+import { execFile, spawn } from "child_process";
 import { promisify } from "util";
 import * as dotenv from "dotenv";
 import crypto from "crypto";
@@ -18,7 +18,37 @@ import { ReactiveSkillSchema } from "./reactive-skill-schema.js";
 
 dotenv.config();
 
-const execAsync = promisify(exec);
+const execFileAsync = promisify(execFile);
+
+// skillId is interpolated into a device-side file path, so restrict it to a
+// conservative charset. This blocks path traversal (../) and shell metacharacters
+// even though device calls no longer go through a shell.
+const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
+
+async function runAdb(args: string[]): Promise<{ stdout: string; stderr: string }> {
+  const { stdout, stderr } = await execFileAsync("adb", args);
+  return { stdout: stdout.toString(), stderr: stderr.toString() };
+}
+
+// Stream the screenshot via `adb exec-out` so large PNGs are not truncated by
+// exec's default maxBuffer and raw bytes are not mangled by a shell.
+function captureScreencap(): Promise<Buffer> {
+  return new Promise((resolve, reject) => {
+    const child = spawn("adb", ["exec-out", "screencap", "-p"]);
+    const chunks: Buffer[] = [];
+    const errChunks: Buffer[] = [];
+    child.stdout.on("data", (chunk) => chunks.push(chunk));
+    child.stderr.on("data", (chunk) => errChunks.push(chunk));
+    child.on("error", reject);
+    child.on("close", (code) => {
+      if (code === 0) {
+        resolve(Buffer.concat(chunks));
+      } else {
+        reject(new Error(Buffer.concat(errChunks).toString() || `adb exited with code ${code}`));
+      }
+    });
+  });
+}
 
 const server = new Server(
   {
@@ -189,6 +219,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (!skillId || !skillJson) {
         throw new McpError(ErrorCode.InvalidParams, "skillId and skillJson are required");
       }
+      if (typeof skillId !== "string" || !SKILL_ID_PATTERN.test(skillId)) {
+        throw new McpError(
+          ErrorCode.InvalidParams,
+          "skillId must match ^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$ (no path separators or shell metacharacters)"
+        );
+      }
 
       const ip = getDeviceIp();
       let logs = "";
@@ -222,21 +258,25 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       // Fallback to ADB
       logs += `\nFalling back to ADB...\n`;
+      let tempDir: string | undefined;
       try {
-        const tempPath = path.join(os.tmpdir(), `${skillId}.json`);
+        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuaiyou-"));
+        const tempPath = path.join(tempDir, `${crypto.randomUUID()}.json`);
         await fs.writeFile(tempPath, skillJson, "utf8");
 
         const packageName = getPackageName();
         const targetPath = `/sdcard/Android/data/${packageName}/files/${skillId}.json`;
-        
-        const { stdout: pushOut, stderr: pushErr } = await execAsync(`adb push ${tempPath} ${targetPath}`);
+
+        const { stdout: pushOut, stderr: pushErr } = await runAdb(["push", tempPath, targetPath]);
         logs += `[ADB PUSH]\n${pushOut}\n${pushErr}\n`;
 
-        const { stdout: chmodOut, stderr: chmodErr } = await execAsync(`adb shell chmod 666 ${targetPath}`);
+        const { stdout: chmodOut, stderr: chmodErr } = await runAdb(["shell", "chmod", "666", targetPath]);
         logs += `[ADB CHMOD]\n${chmodOut}\n${chmodErr}\n`;
 
         const deepLink = `kuaiyou://import_skill?path=${targetPath}`;
-        const { stdout: amOut, stderr: amErr } = await execAsync(`adb shell am start -a android.intent.action.VIEW -d "${deepLink}"`);
+        const { stdout: amOut, stderr: amErr } = await runAdb([
+          "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", deepLink,
+        ]);
         logs += `[ADB AM START]\n${amOut}\n${amErr}\n`;
 
         return {
@@ -248,6 +288,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: `Failed to deploy to device.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}` }],
           isError: true,
         };
+      } finally {
+        if (tempDir) {
+          await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+        }
       }
     }
 
@@ -283,21 +327,18 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Fallback to ADB
       logs += `\nFalling back to ADB uiautomator dump...\n`;
       const dumpFilename = `window_dump_${crypto.randomUUID()}.xml`;
+      const devicePath = `/sdcard/${dumpFilename}`;
       const tempPath = path.join(os.tmpdir(), dumpFilename);
-      
+
       try {
         // Run dump
-        await execAsync(`adb shell uiautomator dump /sdcard/${dumpFilename}`);
-        
+        await runAdb(["shell", "uiautomator", "dump", devicePath]);
+
         // Pull dump
-        await execAsync(`adb pull /sdcard/${dumpFilename} ${tempPath}`);
-        
+        await runAdb(["pull", devicePath, tempPath]);
+
         const xmlData = await fs.readFile(tempPath, "utf8");
-        
-        // Clean up immediately
-        await execAsync(`adb shell rm /sdcard/${dumpFilename}`).catch(() => {});
-        await fs.unlink(tempPath).catch(() => {});
-        
+
         const parser = new XMLParser({
           ignoreAttributes: false,
           attributeNamePrefix: "@_"
@@ -349,6 +390,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           content: [{ type: "text", text: `Failed to fetch screen nodes.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}` }],
           isError: true,
         };
+      } finally {
+        // Clean up device-side and local temp files on both success and failure.
+        await runAdb(["shell", "rm", devicePath]).catch(() => {});
+        await fs.unlink(tempPath).catch(() => {});
       }
     }
 
@@ -384,12 +429,12 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       // Fallback to ADB screencap
       logs += `\nFalling back to ADB screencap...\n`;
       try {
-        const { stdout } = await execAsync(`adb shell screencap -p`, { encoding: 'buffer' });
-        const base64 = stdout.toString('base64');
+        const buffer = await captureScreencap();
+        const base64 = buffer.toString('base64');
         return {
           content: [
-            { 
-              type: "image", 
+            {
+              type: "image",
               data: base64,
               mimeType: "image/png"
             }
