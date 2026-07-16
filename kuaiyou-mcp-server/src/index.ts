@@ -10,45 +10,24 @@ import { XMLParser } from "fast-xml-parser";
 import * as fs from "fs/promises";
 import * as os from "os";
 import * as path from "path";
-import { execFile, spawn } from "child_process";
-import { promisify } from "util";
 import * as dotenv from "dotenv";
 import crypto from "crypto";
 import { ReactiveSkillSchema } from "./reactive-skill-schema.js";
+import {
+  runAdb,
+  captureScreencap,
+  httpGetText,
+  httpGetBuffer,
+  httpPostForm,
+  withDeviceLock,
+} from "./device.js";
 
 dotenv.config();
-
-const execFileAsync = promisify(execFile);
 
 // skillId is interpolated into a device-side file path, so restrict it to a
 // conservative charset. This blocks path traversal (../) and shell metacharacters
 // even though device calls no longer go through a shell.
 const SKILL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-async function runAdb(args: string[]): Promise<{ stdout: string; stderr: string }> {
-  const { stdout, stderr } = await execFileAsync("adb", args);
-  return { stdout: stdout.toString(), stderr: stderr.toString() };
-}
-
-// Stream the screenshot via `adb exec-out` so large PNGs are not truncated by
-// exec's default maxBuffer and raw bytes are not mangled by a shell.
-function captureScreencap(): Promise<Buffer> {
-  return new Promise((resolve, reject) => {
-    const child = spawn("adb", ["exec-out", "screencap", "-p"]);
-    const chunks: Buffer[] = [];
-    const errChunks: Buffer[] = [];
-    child.stdout.on("data", (chunk) => chunks.push(chunk));
-    child.stderr.on("data", (chunk) => errChunks.push(chunk));
-    child.on("error", reject);
-    child.on("close", (code) => {
-      if (code === 0) {
-        resolve(Buffer.concat(chunks));
-      } else {
-        reject(new Error(Buffer.concat(errChunks).toString() || `adb exited with code ${code}`));
-      }
-    });
-  });
-}
 
 const server = new Server(
   {
@@ -120,20 +99,6 @@ server.setRequestHandler(ListToolsRequestSchema, async () => {
     ],
   };
 });
-
-// HTTP Fallback helper
-async function fetchWithTimeout(url: string, options: RequestInit = {}, timeout = 5000) {
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeout);
-  try {
-    const response = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(id);
-    return response;
-  } catch (error) {
-    clearTimeout(id);
-    throw error;
-  }
-}
 
 function parseBoundsStr(boundsStr: string) {
   const match = boundsStr.match(/\[(-?\d+),(-?\d+)\]\[(-?\d+),(-?\d+)\]/);
@@ -235,13 +200,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
           const formData = new URLSearchParams();
           formData.append("postData", skillJson);
 
-          const response = await fetchWithTimeout(`http://${ip}:8080/api/mcp/import`, {
-            method: "POST",
-            body: formData,
-            headers: {
-              "Content-Type": "application/x-www-form-urlencoded"
-            }
-          });
+          const response = await httpPostForm(`http://${ip}:8080/api/mcp/import`, formData);
 
           if (response.ok) {
             logs += `HTTP push successful!\n`;
@@ -256,43 +215,46 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         }
       }
 
-      // Fallback to ADB
+      // Fallback to ADB. Serialize device-mutating work so concurrent pushes
+      // don't interleave against the same device.
       logs += `\nFalling back to ADB...\n`;
-      let tempDir: string | undefined;
-      try {
-        tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuaiyou-"));
-        const tempPath = path.join(tempDir, `${crypto.randomUUID()}.json`);
-        await fs.writeFile(tempPath, skillJson, "utf8");
+      return withDeviceLock(async () => {
+        let tempDir: string | undefined;
+        try {
+          tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuaiyou-"));
+          const tempPath = path.join(tempDir, `${crypto.randomUUID()}.json`);
+          await fs.writeFile(tempPath, skillJson, "utf8");
 
-        const packageName = getPackageName();
-        const targetPath = `/sdcard/Android/data/${packageName}/files/${skillId}.json`;
+          const packageName = getPackageName();
+          const targetPath = `/sdcard/Android/data/${packageName}/files/${skillId}.json`;
 
-        const { stdout: pushOut, stderr: pushErr } = await runAdb(["push", tempPath, targetPath]);
-        logs += `[ADB PUSH]\n${pushOut}\n${pushErr}\n`;
+          const { stdout: pushOut, stderr: pushErr } = await runAdb(["push", tempPath, targetPath]);
+          logs += `[ADB PUSH]\n${pushOut}\n${pushErr}\n`;
 
-        const { stdout: chmodOut, stderr: chmodErr } = await runAdb(["shell", "chmod", "666", targetPath]);
-        logs += `[ADB CHMOD]\n${chmodOut}\n${chmodErr}\n`;
+          const { stdout: chmodOut, stderr: chmodErr } = await runAdb(["shell", "chmod", "666", targetPath]);
+          logs += `[ADB CHMOD]\n${chmodOut}\n${chmodErr}\n`;
 
-        const deepLink = `kuaiyou://import_skill?path=${targetPath}`;
-        const { stdout: amOut, stderr: amErr } = await runAdb([
-          "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", deepLink,
-        ]);
-        logs += `[ADB AM START]\n${amOut}\n${amErr}\n`;
+          const deepLink = `kuaiyou://import_skill?path=${targetPath}`;
+          const { stdout: amOut, stderr: amErr } = await runAdb([
+            "shell", "am", "start", "-a", "android.intent.action.VIEW", "-d", deepLink,
+          ]);
+          logs += `[ADB AM START]\n${amOut}\n${amErr}\n`;
 
-        return {
-          content: [{ type: "text", text: `Successfully deployed skill ${skillId} to device via ADB!\n\nLogs:\n${logs}` }],
-        };
-      } catch (e: any) {
-        logs += `ADB deploy failed: ${e.message}\n`;
-        return {
-          content: [{ type: "text", text: `Failed to deploy to device.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}` }],
-          isError: true,
-        };
-      } finally {
-        if (tempDir) {
-          await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+          return {
+            content: [{ type: "text", text: `Successfully deployed skill ${skillId} to device via ADB!\n\nLogs:\n${logs}` }],
+          };
+        } catch (e: any) {
+          logs += `ADB deploy failed: ${e.message}\n`;
+          return {
+            content: [{ type: "text", text: `Failed to deploy to device.\nMake sure you have enabled "LAN MCP service" in the App (if using IP) or connected via USB (if using ADB).\n\nLogs:\n${logs}` }],
+            isError: true,
+          };
+        } finally {
+          if (tempDir) {
+            await fs.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+          }
         }
-      }
+      });
     }
 
     case "get_ui_tree": {
@@ -302,22 +264,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (ip) {
         logs += `Attempting HTTP GET to http://${ip}:8080/api/mcp/ui_tree...\n`;
         try {
-          const response = await fetchWithTimeout(`http://${ip}:8080/api/mcp/ui_tree`);
-          if (response.ok) {
-            const jsonText = await response.text();
-            try {
-              const parsedJson = JSON.parse(jsonText);
-              const enhancedJson = enhanceUiNodes(parsedJson);
-              return {
-                content: [{ type: "text", text: JSON.stringify(enhancedJson, null, 2) }],
-              };
-            } catch (e) {
-              return {
-                content: [{ type: "text", text: jsonText }],
-              };
-            }
-          } else {
-            logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
+          const jsonText = await httpGetText(`http://${ip}:8080/api/mcp/ui_tree`);
+          try {
+            const parsedJson = JSON.parse(jsonText);
+            const enhancedJson = enhanceUiNodes(parsedJson);
+            return {
+              content: [{ type: "text", text: JSON.stringify(enhancedJson, null, 2) }],
+            };
+          } catch (e) {
+            return {
+              content: [{ type: "text", text: jsonText }],
+            };
           }
         } catch (e: any) {
           logs += `HTTP fetch failed: ${e.message}\n`;
@@ -404,23 +361,17 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       if (ip) {
         logs += `Attempting HTTP GET to http://${ip}:8080/api/mcp/screenshot...\n`;
         try {
-          const response = await fetchWithTimeout(`http://${ip}:8080/api/mcp/screenshot`);
-          if (response.ok) {
-            const arrayBuffer = await response.arrayBuffer();
-            const buffer = Buffer.from(arrayBuffer);
-            const base64 = buffer.toString('base64');
-            return {
-              content: [
-                { 
-                  type: "image", 
-                  data: base64,
-                  mimeType: "image/jpeg"
-                }
-              ],
-            };
-          } else {
-            logs += `HTTP response not ok: ${response.status} ${response.statusText}\n`;
-          }
+          const buffer = await httpGetBuffer(`http://${ip}:8080/api/mcp/screenshot`);
+          const base64 = buffer.toString('base64');
+          return {
+            content: [
+              {
+                type: "image",
+                data: base64,
+                mimeType: "image/jpeg"
+              }
+            ],
+          };
         } catch (e: any) {
           logs += `HTTP fetch failed: ${e.message}\n`;
         }
