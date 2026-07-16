@@ -5,4 +5,7 @@ export default defineConfig({
   format: ['cjs', 'esm'],
   clean: true,
   outDir: 'build',
+  banner: {
+    js: '#!/usr/bin/env node',
+  },
 });
