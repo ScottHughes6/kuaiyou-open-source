@@ -4,8 +4,8 @@ export const ReactiveSkillSchema = z.object({
   id: z.string().min(1, "Missing required field: id"),
   name: z.string().min(1, "Missing required field: name"),
   description: z.string().min(1, "Missing required field: description"),
-  executionMode: z.literal("REACTIVE").optional(),
-  agentId: z.literal("").optional(),
+  executionMode: z.string().optional(),
+  agentId: z.string().optional(),
   termination: z.object({
     type: z.string()
   }).passthrough(),
