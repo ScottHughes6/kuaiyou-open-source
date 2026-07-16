@@ -1,9 +1,6 @@
-const { z } = require("zod");
-const { zodToJsonSchema } = require("zod-to-json-schema");
-const fs = require("fs");
-const path = require("path");
+import { z } from "zod";
 
-const ReactiveSkillSchema = z.object({
+export const ReactiveSkillSchema = z.object({
   id: z.string().min(1, "Missing required field: id"),
   name: z.string().min(1, "Missing required field: name"),
   description: z.string().min(1, "Missing required field: description"),
@@ -16,7 +13,3 @@ const ReactiveSkillSchema = z.object({
   pacingPreset: z.string().optional(),
   scanConfig: z.object({}).passthrough().optional()
 }).passthrough();
-
-const jsonSchema = zodToJsonSchema(ReactiveSkillSchema, "ReactiveSkill");
-fs.writeFileSync(path.join(__dirname, "../schema.json"), JSON.stringify(jsonSchema, null, 2));
-console.log("schema.json generated successfully.");

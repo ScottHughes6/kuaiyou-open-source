@@ -1,4 +1,4 @@
-'use client';
+import Link from 'next/link';
 
 export default function Footer() {
   return (
@@ -10,7 +10,7 @@ export default function Footer() {
         </div>
         <div className="footer-links">
           <a href="https://github.com/ScottHughes6/kuaiyou-open-source" target="_blank" rel="noopener noreferrer">GitHub</a>
-          <a href="/docs">Documentation</a>
+          <Link href="/docs">Documentation</Link>
         </div>
       </div>
       <div className="footer-bottom">

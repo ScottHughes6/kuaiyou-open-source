@@ -37,7 +37,7 @@ function buildIndex() {
     }
   });
 
-  fs.writeFileSync(OUTPUT_FILE, JSON.stringify(index, null, 2));
+  fs.writeFileSync(OUTPUT_FILE, JSON.stringify({ skills: index }, null, 2));
   console.log(`Successfully built index.json with ${index.length} skills.`);
 }
 

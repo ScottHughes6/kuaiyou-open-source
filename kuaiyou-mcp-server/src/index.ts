@@ -14,7 +14,7 @@ import { exec } from "child_process";
 import { promisify } from "util";
 import * as dotenv from "dotenv";
 import crypto from "crypto";
-import { z } from "zod";
+import { ReactiveSkillSchema } from "./reactive-skill-schema.js";
 
 dotenv.config();
 
@@ -35,20 +35,6 @@ const server = new Server(
 // Helper for IP
 const getDeviceIp = () => process.env.KUAIYOU_DEVICE_IP;
 const getPackageName = () => process.env.KUAIYOU_PACKAGE_NAME || "com.kuaiyou.automator.clicker";
-
-const ReactiveSkillSchema = z.object({
-  id: z.string().min(1, "Missing required field: id"),
-  name: z.string().min(1, "Missing required field: name"),
-  description: z.string().min(1, "Missing required field: description"),
-  executionMode: z.literal("REACTIVE").optional(),
-  agentId: z.literal("").optional(),
-  termination: z.object({
-    type: z.string()
-  }).passthrough(),
-  goals: z.array(z.any()),
-  pacingPreset: z.string().optional(),
-  scanConfig: z.object({}).passthrough().optional()
-}).passthrough();
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
   return {
@@ -180,7 +166,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         const result = ReactiveSkillSchema.safeParse(parsed);
         
         if (!result.success) {
-          const errors = result.error.errors.map(err => `${err.path.join('.')}: ${err.message}`);
+          const errors = result.error.issues.map(issue => `${issue.path.join('.')}: ${issue.message}`);
           return {
             content: [{ type: "text", text: "Validation failed with errors:\n" + errors.join("\n") }],
             isError: true,
