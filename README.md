@@ -36,7 +36,7 @@
 
 | 目录/模块 | 描述 |
 | --- | --- |
-| **[kuaiyou-mcp-server](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端，实现了 MCP 协议标准。负责连接您的 Android 手机，向 AI 暴露节点提取、截图和脚本下发三大核心能力。 |
+| **[kuaiyou-mcp-server](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端，实现了 MCP 协议标准。负责连接您的 Android 手机，向 AI 暴露技能校验、节点提取、截图和脚本下发四大核心能力。 |
 | **[schema.json](./schema.json)** | 全局标准的 Zod 导出的 `ReactiveSkill` JSON Schema，支持主流 IDE 的代码自动补全。 |
 | **[skills](./skills/)** | 社区共建的 JSON 脚本库，涵盖签到、阅读、表单填写等常见场景，开箱即用。 |
 | **[agent-skills](./agent-skills/)** | 供 AI (Claude/Cursor) 加载的外挂指导技能文档，教 AI 如何生成合规的快游自动化 JSON。 |

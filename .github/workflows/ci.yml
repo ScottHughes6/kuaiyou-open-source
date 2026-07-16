@@ -83,11 +83,8 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
-      # NOTE: `npm run lint` is intentionally omitted until the eslint toolchain
-      # is fixed. eslint is pinned to 8.0.0, which crashes loading the
-      # @typescript-eslint rules pulled in by `next/typescript`
-      # ("Error while loading rule '@typescript-eslint/no-unnecessary-type-constraint'").
-      # Tracked as a follow-up; re-add once eslint is bumped to a working 8.x/9.x.
+      - name: Lint
+        run: npm run lint
 
       - name: Typecheck
         run: npx tsc --noEmit

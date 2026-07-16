@@ -1,45 +1,12 @@
-'use client';
-import { useEffect, useState } from 'react';
-import SkillCard from '@/components/SkillCard';
-
-interface Skill {
-  id: string;
-  name: string;
-  description: string;
-  executionMode: string;
-  file: string;
-  updatedAt: string;
-}
+import SkillsExplorer from '@/components/SkillsExplorer';
+import { getSkills } from '@/lib/skills';
 
 export default function Home() {
-  const [skills, setSkills] = useState<Skill[]>([]);
-  const [loading, setLoading] = useState(true);
-  const [search, setSearch] = useState('');
-  
-  // Since we are deploying to GitHub pages with basePath
-  const basePath = '/kuaiyou-open-source';
+  // Loaded at build time so skills are in the static HTML (indexable, no fetch).
+  const skills = getSkills();
 
-  useEffect(() => {
-    // Fetch the generated index.json from the GitHub pages root
-    fetch(`${basePath}/skills/index.json`)
-      .then(res => res.json())
-      .then(data => {
-        if (data.skills) {
-          setSkills(data.skills);
-        }
-        setLoading(false);
-      })
-      .catch(err => {
-        console.error("Failed to load skills:", err);
-        setLoading(false);
-      });
-  }, []);
-
-  const filteredSkills = skills.filter(skill => 
-    skill.name.toLowerCase().includes(search.toLowerCase()) || 
-    skill.description.toLowerCase().includes(search.toLowerCase()) ||
-    skill.id.toLowerCase().includes(search.toLowerCase())
-  );
+  // Skill JSON files are published under this basePath on GitHub Pages.
+  const skillsBaseUrl = '/kuaiyou-open-source/skills';
 
   return (
     <main className="container animate-fade-in">
@@ -100,29 +67,7 @@ export default function Home() {
           <p>Discover and deploy community-driven automation skills.</p>
         </div>
 
-        <div className="search-container">
-          <input 
-            type="text" 
-            placeholder="Search skills by name, description or ID..." 
-            className="search-input glass-panel code-font"
-            value={search}
-            onChange={e => setSearch(e.target.value)}
-          />
-        </div>
-
-        {loading ? (
-          <div className="loading code-font">Loading skills index...</div>
-        ) : filteredSkills.length > 0 ? (
-          <div className="skills-grid">
-            {filteredSkills.map(skill => (
-              <SkillCard key={skill.id} skill={skill} baseUrl={basePath} />
-            ))}
-          </div>
-        ) : (
-          <div className="empty-state glass-panel">
-            No skills found matching &quot;{search}&quot;.
-          </div>
-        )}
+        <SkillsExplorer skills={skills} baseUrl={skillsBaseUrl} />
       </div>
 
       
