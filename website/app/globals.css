@@ -10,18 +10,29 @@
   --card-hover-bg: rgba(30, 30, 40, 0.8);
 }
 
-@import url('https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Fira+Code:wght@400;500&display=swap');
-
 * {
   box-sizing: border-box;
   padding: 0;
   margin: 0;
 }
 
+/* Visually hidden but available to screen readers */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
+  font-family: var(--font-geist-sans), -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif;
   min-height: 100vh;
   position: relative;
   overflow-x: hidden;
@@ -90,7 +101,7 @@ a:hover {
 }
 
 .code-font {
-  font-family: 'Fira Code', monospace;
+  font-family: var(--font-geist-mono), 'Fira Code', monospace;
 }
 
 /* Typography */
