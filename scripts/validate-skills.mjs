@@ -1,9 +1,10 @@
-// Validates every skills/*.json against the repo's exported schema.json and
-// verifies the generated index contract. Dependency-free so CI can run it
-// without an npm install. Implements just the subset of JSON Schema that
-// schema.json uses: type, required, minLength, const.
-import { readFileSync, readdirSync } from "fs";
-import { fileURLToPath } from "url";
+// Validates every skills/*.json against the authoritative ReactiveSkillSchema
+// (the same Zod schema the MCP server validates with, imported from its build
+// output — kuaiyou-mcp-server must be built first, see the CI skills job).
+// Also verifies the generated index contract. schema.json is the public
+// projection of that schema and is kept in sync by the CI drift check.
+import { readFileSync, readdirSync, existsSync } from "fs";
+import { fileURLToPath, pathToFileURL } from "url";
 import { dirname, join } from "path";
 import { execFileSync } from "child_process";
 
@@ -11,29 +12,20 @@ const __dirname = dirname(fileURLToPath(import.meta.url));
 const repoRoot = join(__dirname, "..");
 const skillsDir = join(repoRoot, "skills");
 
-const schema = JSON.parse(readFileSync(join(repoRoot, "schema.json"), "utf8"));
-
-function validate(obj, schema, path = "") {
-  const errors = [];
-  if (schema.type === "object") {
-    if (typeof obj !== "object" || obj === null || Array.isArray(obj)) {
-      return [`${path || "root"}: expected object`];
-    }
-    for (const key of schema.required ?? []) {
-      if (!(key in obj)) errors.push(`${path}${key}: missing required field`);
-    }
-    for (const [key, sub] of Object.entries(schema.properties ?? {})) {
-      if (key in obj) errors.push(...validate(obj[key], sub, `${path}${key}.`));
-    }
-  } else if (schema.type === "string") {
-    if (typeof obj !== "string") errors.push(`${path.slice(0, -1)}: expected string`);
-    else if (schema.minLength && obj.length < schema.minLength) errors.push(`${path.slice(0, -1)}: shorter than ${schema.minLength}`);
-    else if (schema.const !== undefined && obj !== schema.const) errors.push(`${path.slice(0, -1)}: must equal ${JSON.stringify(schema.const)}`);
-  } else if (schema.type === "array") {
-    if (!Array.isArray(obj)) errors.push(`${path.slice(0, -1)}: expected array`);
-  }
-  return errors;
+const schemaModulePath = join(
+  repoRoot,
+  "kuaiyou-mcp-server",
+  "build",
+  "reactive-skill-schema.mjs"
+);
+if (!existsSync(schemaModulePath)) {
+  console.error(
+    "Missing kuaiyou-mcp-server build output. Run `npm ci && npm run build` " +
+      "inside kuaiyou-mcp-server/ before validating skills."
+  );
+  process.exit(1);
 }
+const { ReactiveSkillSchema } = await import(pathToFileURL(schemaModulePath).href);
 
 const files = readdirSync(skillsDir).filter((f) => f.endsWith(".json") && f !== "index.json");
 let failed = false;
@@ -48,8 +40,9 @@ for (const file of files) {
     failed = true;
     continue;
   }
-  const errors = validate(data, schema);
-  if (errors.length) {
+  const result = ReactiveSkillSchema.safeParse(data);
+  if (!result.success) {
+    const errors = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`);
     console.error(`✗ ${file}:\n  ${errors.join("\n  ")}`);
     failed = true;
   } else {
