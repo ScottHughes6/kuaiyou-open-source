@@ -36,40 +36,48 @@
 
 ## 3. 开发环境与提交流程 (Development Workflow)
 
-本项目严格遵循 **[Git Flow](https://nvie.com/posts/a-successful-git-branching-model/)** 分支管理规范：
+本项目遵循经过优化的 **Git Flow** 与 **Issue 驱动** 的分支管理规范。为了保持历史的整洁与可追溯，**严禁使用 sprint (迭代) 分支**将多个任务打包提交。所有开发必须按粒度拆解并对应具体的 Issue。
+
+### 分支命名规范
 - `main`：生产环境主分支，随时可发布。
 - `develop`：主开发分支，包含下一次发布的所有最新开发代码。
-- `feature/*`：新功能分支（从 `develop` 检出，合并回 `develop`）。
-- `hotfix/*`：紧急修复分支（从 `main` 检出，合并回 `main` 和 `develop`）。
+- `feature/<issue-id>-<short-desc>`：新功能分支（从 `develop` 检出，例如 `feature/42-schema-validation`）。
+- `bugfix/<issue-id>-<short-desc>`：常规缺陷修复（从 `develop` 检出）。
+- `hotfix/<issue-id>-<short-desc>`：紧急线上修复（从 `main` 检出，合并回 `main` 和 `develop`）。
+- `docs/...` / `chore/...`：文档更新或构建工具链调整等非功能性分支。
 
 如果您想修改项目本身的代码（Android 或 Node.js Server），请遵循以下步骤：
 
-1. **Fork 本仓库** 到您的个人账号下。
-2. **Clone 到本地**：
+1. **先提出 Issue**：任何代码层面的修改，请确保已经有一个相关的 Issue 进行跟踪。
+2. **Fork 本仓库** 到您的个人账号下。
+3. **Clone 到本地并配置 Git**：
    ```bash
    git clone https://github.com/YOUR-USERNAME/kuaiyou-app.git
    cd kuaiyou-app
+   # 强制拉取代码时使用 rebase，避免产生无意义的交叉 merge 节点
+   git config pull.rebase true
    git checkout develop
    ```
-3. **创建特性分支**：
+4. **创建特性分支**（记得带上 Issue ID）：
    ```bash
-   git checkout -b feature/your-amazing-feature develop
+   git checkout -b feature/123-your-amazing-feature develop
    ```
-4. **本地运行与测试**：
+5. **本地运行与测试**：
    如果您修改了 `kuaiyou-mcp-server`，请确保在本地测试通过：
    ```bash
    cd kuaiyou-mcp-server
    npm install
    npm run build
    ```
-5. **提交代码 (Commit)**：
+6. **提交代码 (Commit)**：
    我们遵循 [Conventional Commits](https://www.conventionalcommits.org/) 规范。请使用规范的提交信息格式（例如 `feat: add new target selector` 或 `fix: mcp server adb fallback`）。
-6. **推送到远程并提交 PR**：
+   **要求：**如果提交解决了 Issue，请在 Commit 描述中附带 `Fixes #123` 或 `Closes #123`。
+7. **推送到远程并提交 PR**：
    ```bash
-   git push origin feature/your-amazing-feature
+   git push origin feature/123-your-amazing-feature
    ```
    然后在 GitHub 页面点击 "Compare & pull request"。
-   > **⚠️ 注意**：提交 Pull Request 时，请务必将目标分支 (base branch) 设置为 `develop` 而不是 `main`。请务必仔细填写弹出的 **Pull Request 模板** 中的 CheckList。
+   > **⚠️ 注意**：提交 Pull Request 时，请务必将目标分支 (base branch) 设置为 `develop` 而不是 `main`。推荐在合并到 `develop` 时使用 **Squash and Merge** 策略。请务必仔细填写弹出的 **Pull Request 模板** 中的 CheckList。
 
 ### 代码风格规范
 - **Node.js (MCP Server)**：基于 TypeScript，请在提交 PR 之前运行 `npm run build` 确保没有 TS 编译错误。为了保证代码质量，我们的 GitHub Actions 会对提交的 PR 进行自动构建测试。
