@@ -21,6 +21,11 @@
   "author": "",
   "license": "Apache-2.0",
   "type": "commonjs",
+  "engines": {
+    "node": ">=18",
+    "npm": ">=9"
+  },
+  "packageManager": "npm@10.9.2",
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.29.0",
     "dotenv": "^17.4.2",
