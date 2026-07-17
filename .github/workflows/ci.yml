@@ -102,6 +102,12 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: 20
+          cache: 'npm'
+          cache-dependency-path: './kuaiyou-mcp-server/package-lock.json'
+
+      - name: Build the MCP server (provides the authoritative schema)
+        run: npm ci && npm run build
+        working-directory: ./kuaiyou-mcp-server
 
       - name: Validate skills against schema and verify index contract
         run: node scripts/validate-skills.mjs

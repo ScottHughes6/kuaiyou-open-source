@@ -42,10 +42,23 @@ test("validate_kuaiyou_skill accepts a valid skill", async () => {
     id: "test-123",
     name: "Test Skill",
     description: "A test skill",
-    executionMode: "REACTIVE",
-    termination: { type: "ALL_GOALS_COMPLETED" },
-    goals: [],
-    agentId: "",
+    agentId: "agent_life",
+    termination: { type: "allGoalsDone" },
+    goals: [
+      {
+        id: "g1",
+        name: "Goal 1",
+        priority: 5,
+        trigger: { type: "immediate" },
+        actions: [{ type: "notify", message: "hello", speakVoice: false }],
+        constraints: {
+          maxExecutions: 1,
+          cooldownMs: 0,
+          continueOnFailure: false,
+          enabled: true,
+        },
+      },
+    ],
   });
   const res = await client.callTool({
     name: "validate_kuaiyou_skill",
