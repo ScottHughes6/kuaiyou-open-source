@@ -11,7 +11,7 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "npm run build && node --test \"test/**/*.test.js\"",
+    "test": "npm run build && node --test",
     "build": "tsup",
     "build:schema": "npm run build && node scripts/build-schema.mjs",
     "prepack": "npm run build",
