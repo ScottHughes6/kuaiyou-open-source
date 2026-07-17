@@ -1,5 +1,11 @@
 This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
+## Stack pin (do not major-upgrade)
+
+- **Pinned:** Next.js **14.2.x** (static export for GitHub Pages).
+- **WON'T DO:** upgrading to Next.js 15/16 solely for dependency hygiene or generic CVE cleanup.
+- Rationale and agent rules: see repo root [`CLAUDE.md`](../CLAUDE.md).
+
 ## Getting Started
 
 First, run the development server:
