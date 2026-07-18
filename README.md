@@ -24,11 +24,15 @@
 
 ---
 
-## 🌟 核心特性与愿景
+## 🌟 核心特性与 V2 架构升级
 
-- 🤖 **大模型原生的 MCP 集成**：AI 可以随时提取 Android 屏幕的 UI Tree 结构、精准计算中心点坐标，并实时截取屏幕画面，不再是“盲人摸象”。
-- ⚡️ **极速开发体验 (所见即所得)**：AI 编写完 JSON 格式的自动化脚本后，可通过局域网 HTTP 秒级推送到手机端直接运行，告别繁琐的代码编译和数据线调试。
-- 🧩 **响应式架构 (ReactiveSkill)**：抛弃传统的阻塞型脚本（如按序 `sleep`），使用我们独创的基于“触发器 (Trigger) + 动作 (Action)”的解耦模型，脚本异常健壮，完美应对广告弹窗和网络卡顿。
+在最新的 V2 架构中，我们对底层的 ReactiveSkill 引擎进行了全面升级，带来了更稳定、更纯粹的本地化执行体验：
+
+- 🛡️ **全局弹窗拦截 (Interrupts)**：采用独立高优先级线程，随时随地智能识别并关闭各种不可预期的弹窗（如青少年模式、版本更新、广告等），不再打断主流程。
+- 🎯 **基于无障碍树的语义点击**：抛弃脆弱的绝对坐标，支持直接通过 `semantic`（如“去签到按钮”）描述目标，系统底层结合无障碍 (Accessibility) 树和端侧小模型进行精准定位与点击。
+- 📏 **坐标百分比与相对滑动**：针对不同分辨率的设备，支持 `startXPct` 等百分比坐标；支持在一个特定 UI 面板（如评论区）内进行精准的相对滑动操作。
+- 🔒 **严格的本地化执行**：全面移除对外部大模型运行期调用的依赖（剔除了旧版的 `agentId` 字段，严格拦截 `askAgent` 动作），所有的动作指令（`tap`, `swipe`, `launchApp`, `delay`）都在设备本地极速闭环，大幅提升运行流畅度并节省云端 Token。
+- 🤖 **大模型原生的 MCP 集成**：通过我们提供的 `kuaiyou-mcp-server`，AI 可在 PC 编排端随时提取 Android 屏幕结构、计算中心点坐标，并秒级下发调试脚本，实现完美的“PC 编排 - 端侧运行”联调闭环。
 
 ---
 
@@ -36,11 +40,11 @@
 
 | 目录/模块 | 描述 |
 | --- | --- |
-| **[kuaiyou-mcp-server](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端，实现了 MCP 协议标准。负责连接您的 Android 手机，向 AI 暴露技能校验、节点提取、截图和脚本下发四大核心能力。 |
-| **[schema.json](./schema.json)** | 全局标准的 Zod 导出的 `ReactiveSkill` JSON Schema，支持主流 IDE 的代码自动补全。 |
-| **[skills](./skills/)** | 社区共建的 JSON 脚本库，涵盖签到、阅读、表单填写等常见场景，开箱即用。 |
-| **[agent-skills](./agent-skills/)** | 供 AI (Claude/Cursor) 加载的外挂指导技能文档，教 AI 如何生成合规的快游自动化 JSON。 |
-| **[docs](./docs/)** | 详尽的开发者指南，包含 MCP 接入教程、API 参数表和最佳实践。 |
+| **[kuaiyou-mcp-server](./kuaiyou-mcp-server/)** | 核心 Node.js 服务端（MCP 协议）。打通 PC 编排与 Android 实机联调，向 AI 暴露节点提取、截图和脚本下发能力。 |
+| **[schema.json](./schema.json)** | 全局标准的 Zod 导出的 `ReactiveSkill` JSON Schema。V2 版本已完全纯净，不含 `agentId`。 |
+| **[docs](./docs/)** | 详尽的开发者指南，包含 V2 技能编写与联调手册、避坑指南等。 |
+| **[examples](./examples/)** | 规范的 V2 技能脚本示例，包含无限刷视频、智能互动等。 |
+| **[skills](./skills/) / [agent-skills](./agent-skills/)** | 社区共建脚本库及供 AI (Claude/Cursor) 挂载的技能提示词。 |
 
 ---
 
@@ -51,10 +55,10 @@
 ### 1. 准备手机端
 - 在应用商店下载并安装最新版 **“快游大师”**。
 - 打开 App 的“设置”页面，勾选 **“局域网 MCP 服务 (LAN MCP Service)”**，并记录显示的局域网 IP（例如 `192.168.1.100`）。
-- *(如果没有局域网环境，请开启 Android 的 USB 调试并连上数据线，我们的系统会自动回退到 ADB 模式。)*
+- *(如果没有局域网环境，请开启 Android 的 USB 调试并连上数据线，系统会自动回退到 ADB 模式。)*
 
 ### 2. 在 AI 助理中配置 MCP Server
-我们已将核心逻辑发布，您只需在您的 Cursor (Settings -> Features -> MCP) 或 Claude Desktop 配置中，添加一个 Command 类型的服务器：
+在您的 Cursor (Settings -> Features -> MCP) 或 Claude Desktop 配置中，添加一个 Command 类型的服务器：
 
 ```bash
 # 局域网直连模式（推荐，速度最快，请替换为您手机的 IP）
