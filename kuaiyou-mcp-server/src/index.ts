@@ -43,6 +43,9 @@ const server = new Server(
 
 // Helper for IP
 const getDeviceIp = () => process.env.KUAIYOU_DEVICE_IP;
+const getDeviceBaseUrl = (ip: string) => {
+  return /:\d+$/.test(ip) ? `http://${ip}` : `http://${ip}:8080`;
+};
 const getPackageName = () => process.env.KUAIYOU_PACKAGE_NAME || "com.kuaiyou.automator.clicker";
 
 server.setRequestHandler(ListToolsRequestSchema, async () => {
@@ -158,6 +161,23 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
 
       try {
         const parsed = JSON.parse(content);
+
+        // 强拦截 askAgent：遍历所有 actions
+        let hasAskAgent = false;
+        const checkAction = (obj: any) => {
+          if (!obj || typeof obj !== "object") return;
+          if (obj.type === "askAgent") hasAskAgent = true;
+          Object.values(obj).forEach(checkAction);
+        };
+        checkAction(parsed);
+
+        if (hasAskAgent) {
+           return {
+             content: [{ type: "text", text: "Validation failed: 'askAgent' action is strictly prohibited and not supported for local execution." }],
+             isError: true,
+           };
+        }
+
         const result = ReactiveSkillSchema.safeParse(parsed);
         
         if (!result.success) {
@@ -191,16 +211,30 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         );
       }
 
+      let processedJson = skillJson;
+      try {
+        const obj = JSON.parse(skillJson);
+        if (typeof obj === "object" && obj !== null) {
+          // 在架构方案 A 下，外部完全不知道 agentId 的存在，
+          // 这里不再向客户端下发 agentId，由客户端在网关层自己兜底赋值为 ""
+          delete obj.agentId; 
+          processedJson = JSON.stringify(obj, null, 2);
+        }
+      } catch (e) {
+        // Ignore parse error, let the server handle invalid JSON
+      }
+
       const ip = getDeviceIp();
       let logs = "";
 
       if (ip) {
-        logs += `Attempting HTTP POST to http://${ip}:8080/api/mcp/import...\n`;
+        const baseUrl = getDeviceBaseUrl(ip);
+        logs += `Attempting HTTP POST to ${baseUrl}/api/mcp/import...\n`;
         try {
           const formData = new URLSearchParams();
-          formData.append("postData", skillJson);
+          formData.append("postData", processedJson);
 
-          const response = await httpPostForm(`http://${ip}:8080/api/mcp/import`, formData);
+          const response = await httpPostForm(`${baseUrl}/api/mcp/import`, formData);
 
           if (response.ok) {
             logs += `HTTP push successful!\n`;
@@ -223,7 +257,7 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
         try {
           tempDir = await fs.mkdtemp(path.join(os.tmpdir(), "kuaiyou-"));
           const tempPath = path.join(tempDir, `${crypto.randomUUID()}.json`);
-          await fs.writeFile(tempPath, skillJson, "utf8");
+          await fs.writeFile(tempPath, processedJson, "utf8");
 
           const packageName = getPackageName();
           const targetPath = `/sdcard/Android/data/${packageName}/files/${skillId}.json`;
@@ -262,9 +296,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let logs = "";
 
       if (ip) {
-        logs += `Attempting HTTP GET to http://${ip}:8080/api/mcp/ui_tree...\n`;
+        const baseUrl = getDeviceBaseUrl(ip);
+        logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/ui_tree...\n`;
         try {
-          const jsonText = await httpGetText(`http://${ip}:8080/api/mcp/ui_tree`);
+          const jsonText = await httpGetText(`${baseUrl}/api/mcp/ui_tree`);
           try {
             const parsedJson = JSON.parse(jsonText);
             const enhancedJson = enhanceUiNodes(parsedJson);
@@ -359,9 +394,10 @@ server.setRequestHandler(CallToolRequestSchema, async (request) => {
       let logs = "";
 
       if (ip) {
-        logs += `Attempting HTTP GET to http://${ip}:8080/api/mcp/screenshot...\n`;
+        const baseUrl = getDeviceBaseUrl(ip);
+        logs += `Attempting HTTP GET to ${baseUrl}/api/mcp/screenshot...\n`;
         try {
-          const buffer = await httpGetBuffer(`http://${ip}:8080/api/mcp/screenshot`);
+          const buffer = await httpGetBuffer(`${baseUrl}/api/mcp/screenshot`);
           const base64 = buffer.toString('base64');
           return {
             content: [

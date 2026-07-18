@@ -54,6 +54,9 @@ const TargetSchema = z.looseObject({
   exact: z.boolean().optional(),
   textExact: z.boolean().optional(),
   index: z.number().int().optional(),
+  description: z.string().optional(),
+  hintText: z.string().optional(),
+  hintDesc: z.string().optional(),
 }).superRefine((target, ctx) => {
   switch (target.type) {
     case "text":
@@ -69,6 +72,9 @@ const TargetSchema = z.looseObject({
       requireField(target, ctx, "text");
       requireField(target, ctx, "textExact");
       requireField(target, ctx, "index");
+      break;
+    case "semantic":
+      requireField(target, ctx, "description");
       break;
   }
 });
@@ -154,6 +160,7 @@ const ActionSchema = z.looseObject({
   scrollRegion: ScrollRegionSchema.optional(),
   scrollPath: SwipePathSchema.optional(),
   variableName: z.string().optional(),
+  question: z.string().optional(), // For askAgent
   startXPct: pct.optional(),
   startYPct: pct.optional(),
   endXPct: pct.optional(),
@@ -191,10 +198,12 @@ const ActionSchema = z.looseObject({
       requireField(action, ctx, "systemType");
       break;
     case "swipe":
-      requireField(action, ctx, "startXPct");
-      requireField(action, ctx, "startYPct");
-      requireField(action, ctx, "endXPct");
-      requireField(action, ctx, "endYPct");
+      if (action.target === undefined) {
+        requireField(action, ctx, "startXPct");
+        requireField(action, ctx, "startYPct");
+        requireField(action, ctx, "endXPct");
+        requireField(action, ctx, "endYPct");
+      }
       break;
     case "scrollTo":
       requireField(action, ctx, "target");
@@ -213,6 +222,9 @@ const ActionSchema = z.looseObject({
       requireField(action, ctx, "onTrue");
       requireField(action, ctx, "onFalse");
       break;
+    case "askAgent":
+      requireField(action, ctx, "question");
+      break;
   }
 });
 
@@ -228,10 +240,18 @@ const ConstraintsSchema = z.looseObject({
 const GoalSchema = z.looseObject({
   id: nonEmptyString,
   name: nonEmptyString,
-  priority: z.number().int(),
+  priority: z.number().int().optional(),
   trigger: TriggerSchema,
-  actions: z.array(ActionSchema).min(1),
-  constraints: ConstraintsSchema,
+  action: ActionSchema.optional(),
+  actions: z.array(ActionSchema).optional(),
+  constraints: ConstraintsSchema.optional(),
+});
+
+const InterruptSchema = z.looseObject({
+  name: nonEmptyString,
+  when: TargetSchema,
+  dismiss: TargetSchema,
+  enabled: z.boolean().optional(),
 });
 
 const TerminationSchema = z.looseObject({
@@ -256,6 +276,7 @@ export const ReactiveSkillSchema = z.looseObject({
   executionMode: z.string().optional(),
   agentId: z.string().optional(),
   termination: TerminationSchema,
+  interrupts: z.array(InterruptSchema).optional(),
   goals: z.array(GoalSchema).min(1),
   pacingPreset: z.string().optional(),
   scanConfig: ScanConfigSchema.optional(),

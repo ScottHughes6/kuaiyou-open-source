@@ -41,7 +41,7 @@ export async function httpPostForm(
     const res = await fetch(url, {
       method: "POST",
       body: form,
-      headers: { "Content-Type": "application/x-www-form-urlencoded" },
+      headers: { "Content-Type": "application/x-www-form-urlencoded; charset=utf-8" },
       signal,
     });
     // Drain the body so the timeout genuinely covers the whole exchange.
