@@ -8,10 +8,13 @@
   },
   "packageManager": "npm@10.9.2",
   "scripts": {
+    "predev": "node ./scripts/sync-skills.mjs",
     "dev": "next dev",
+    "prebuild": "node ./scripts/sync-skills.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "next lint"
+    "lint": "next lint",
+    "sync-skills": "node ./scripts/sync-skills.mjs"
   },
   "dependencies": {
     "next": "14.2.35",

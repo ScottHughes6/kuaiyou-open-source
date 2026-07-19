@@ -43,16 +43,25 @@ jobs:
         working-directory: ./website
         run: npm ci
 
+      - name: Sync skills into website package
+        working-directory: ./website
+        run: npm run sync-skills
+
       - name: Build Next.js Website
         working-directory: ./website
         run: npm run build
 
       - name: Prepare Pages Artifact
         run: |
-          # Copy skills folder (now containing index.json) into the static export dir
-          cp -r skills website/out/
-          # Copy agent-skills folder
+          # Ensure the published skills JSON and index match the homepage catalog.
+          rm -rf website/out/skills
+          cp -r skills website/out/skills
+          # Preserve agent skill packages for download.
           cp -r agent-skills website/out/
+          # Basic smoke checks for the static export shape.
+          test -f website/out/index.html
+          test -f website/out/docs/index.html
+          test -f website/out/skills/index.json
 
       - name: Setup Pages
         uses: actions/configure-pages@v5
